@@ -20,11 +20,12 @@ validateEnv();
 
 const app = express();
 
-// CORS configuration
+// CORS configuration with more flexible origin handling for Vercel
 const allowedOrigins = [
   'http://localhost:5173',  // Vite dev server
   'http://localhost:3000',  // Alternative local frontend
   process.env.FRONTEND_URL, // Production frontend URL
+  // /\.vercel\.app$/,        // All Vercel deployments
 ];
 
 // Middleware
@@ -33,7 +34,15 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) === -1) {
+    // Check if the origin matches any allowed origins or patterns
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return allowedOrigin === origin;
+    });
+
+    if (!isAllowed) {
       const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
       return callback(new Error(msg), false);
     }
@@ -53,33 +62,30 @@ app.use((req, res, next) => {
   next();
 });
 
-// Database connection handling
-let isConnected = false;
+// MongoDB connection with serverless optimization
+let cachedDb = null;
 
 const connectToDatabase = async () => {
-  if (isConnected) {
-    return Promise.resolve();
+  if (cachedDb) {
+    console.log('Using cached database connection');
+    return;
   }
 
   try {
-    // For Vercel, we want to set some additional options
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      bufferCommands: false,
-    };
-
-    await mongoose.connect(process.env.DATABASE_URL, options);
-    isConnected = true;
-    console.log('Database connected successfully');
+    const db = await mongoose.connect(process.env.DATABASE_URL, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    
+    cachedDb = db;
+    console.log('New database connection established');
   } catch (error) {
     console.error('Database connection error:', error);
-    isConnected = false;
     throw error;
   }
 };
 
-// Connect to database before handling requests - this should be BEFORE routes
+// Connect to database before handling requests
 app.use(async (req, res, next) => {
   try {
     await connectToDatabase();
@@ -87,11 +93,6 @@ app.use(async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
-
-// Basic home route
-app.get("/api", (req, res) => {
-  res.json({ message: "API is working!" });
 });
 
 // Mount routes
@@ -105,39 +106,24 @@ app.use("/api/material-test", materialTestRoutes);
 app.use("/api/ror", rorRoutes);
 app.use('/api/proforma', proformaRoutes);
 
-// Error handling middleware should be last
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  
-  // Close database connection on error in serverless environment
-  if (process.env.VERCEL_ENV === 'production') {
-    try {
-      mongoose.connection.close();
-      isConnected = false;
-    } catch (closeError) {
-      console.error('Error closing MongoDB connection:', closeError);
-    }
-  }
-  
-  res.status(500).json({
-    ok: false,
-    error: err.message || "Something broke!",
+// Basic health check route
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
   });
 });
 
-// Handle serverless function cleanup
-if (process.env.VERCEL_ENV === 'production') {
-  process.on('SIGTERM', async () => {
-    try {
-      await mongoose.connection.close();
-      isConnected = false;
-      console.log('MongoDB connection closed through SIGTERM signal');
-    } catch (err) {
-      console.error('Error closing MongoDB connection:', err);
-    } finally {
-      process.exit(0);
-    }
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({
+    ok: false,
+    error: err.message || "Something broke!",
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
-}
+});
 
+// Export the Express app
 export default app; 
