@@ -53,24 +53,46 @@ app.use((req, res, next) => {
   next();
 });
 
-// Connect to MongoDB
+// Database connection handling
 let isConnected = false;
 
 const connectToDatabase = async () => {
   if (isConnected) {
-    console.log('Using existing database connection');
-    return;
+    return Promise.resolve();
   }
 
   try {
-    await mongoose.connect(process.env.DATABASE_URL);
+    // For Vercel, we want to set some additional options
+    const options = {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      bufferCommands: false,
+    };
+
+    await mongoose.connect(process.env.DATABASE_URL, options);
     isConnected = true;
     console.log('Database connected successfully');
   } catch (error) {
     console.error('Database connection error:', error);
+    isConnected = false;
     throw error;
   }
 };
+
+// Connect to database before handling requests - this should be BEFORE routes
+app.use(async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Basic home route
+app.get("/api", (req, res) => {
+  res.json({ message: "API is working!" });
+});
 
 // Mount routes
 app.use("/api/auth", authRoutes);
@@ -83,28 +105,39 @@ app.use("/api/material-test", materialTestRoutes);
 app.use("/api/ror", rorRoutes);
 app.use('/api/proforma', proformaRoutes);
 
-// Basic home route
-app.get("/api", (req, res) => {
-  res.json({ message: "API is working!" });
-});
-
-// Error handling middleware
+// Error handling middleware should be last
 app.use((err, req, res, next) => {
   console.error('Error:', err);
+  
+  // Close database connection on error in serverless environment
+  if (process.env.VERCEL_ENV === 'production') {
+    try {
+      mongoose.connection.close();
+      isConnected = false;
+    } catch (closeError) {
+      console.error('Error closing MongoDB connection:', closeError);
+    }
+  }
+  
   res.status(500).json({
     ok: false,
     error: err.message || "Something broke!",
   });
 });
 
-// Connect to database before handling requests
-app.use(async (req, res, next) => {
-  try {
-    await connectToDatabase();
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
+// Handle serverless function cleanup
+if (process.env.VERCEL_ENV === 'production') {
+  process.on('SIGTERM', async () => {
+    try {
+      await mongoose.connection.close();
+      isConnected = false;
+      console.log('MongoDB connection closed through SIGTERM signal');
+    } catch (err) {
+      console.error('Error closing MongoDB connection:', err);
+    } finally {
+      process.exit(0);
+    }
+  });
+}
 
 export default app; 
