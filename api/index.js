@@ -24,41 +24,46 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173',  // Vite dev server
   'http://localhost:3000',  // Alternative local frontend
-  process.env.FRONTEND_URL, // Production frontend URL
-  // /\.vercel\.app$/,        // All Vercel deployments
+  'https://atl-frontend-ashy.vercel.app', // Production frontend URL
+  process.env.FRONTEND_URL, // Production frontend URL from env
 ];
 
 // Middleware
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    console.log('Request origin:', origin); // Debug log
     
-    // Check if the origin matches any allowed origins or patterns
-    const isAllowed = allowedOrigins.some(allowedOrigin => {
-      if (allowedOrigin instanceof RegExp) {
-        return allowedOrigin.test(origin);
-      }
-      return allowedOrigin === origin;
-    });
-
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      console.log('No origin provided');
+      return callback(null, true);
+    }
+    
+    // Check if the origin matches any allowed origins
+    const isAllowed = allowedOrigins.includes(origin);
+    console.log('Is origin allowed:', isAllowed); // Debug log
+    
     if (!isAllowed) {
       const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      console.log('CORS blocked origin:', origin); // Debug log
       return callback(new Error(msg), false);
     }
+    
     return callback(null, true);
   },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// Request logging middleware
+// Request logging middleware with more details
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log('Headers:', req.headers);
   next();
 });
 
