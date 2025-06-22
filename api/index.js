@@ -95,6 +95,26 @@ app.use(async (req, res, next) => {
   }
 });
 
+// Root endpoint for easy verification
+app.get("/", (req, res) => {
+  res.json({
+    message: "ATL Backend API is running",
+    documentation: "/api/docs",
+    healthCheck: "/api/health"
+  });
+});
+
+// Basic health check route with more details
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "healthy",
+    service: "ATL Backend API",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    database: cachedDb ? "connected" : "disconnected"
+  });
+});
+
 // Mount routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
@@ -105,15 +125,6 @@ app.use("/api/equipment", equipmentRoutes);
 app.use("/api/material-test", materialTestRoutes);
 app.use("/api/ror", rorRoutes);
 app.use('/api/proforma', proformaRoutes);
-
-// Basic health check route
-app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV
-  });
-});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
