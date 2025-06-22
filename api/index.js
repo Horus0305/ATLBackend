@@ -95,17 +95,56 @@ app.use(async (req, res, next) => {
   }
 });
 
-// Root endpoint for easy verification
-app.get("/", (req, res) => {
-  res.json({
-    message: "ATL Backend API is running",
-    documentation: "/api/docs",
-    healthCheck: "/api/health"
-  });
+// Root endpoint for easy verification - handle both root and /api paths
+app.get(["/", "/api"], (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>ATL Backend API Status</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            line-height: 1.6;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+          }
+          .status {
+            padding: 20px;
+            background-color: #e7f3ff;
+            border-radius: 5px;
+            margin-bottom: 20px;
+          }
+          .endpoints {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="status">
+            <h1>✅ ATL Backend API is Running</h1>
+            <p>Server is operational and ready to accept requests.</p>
+          </div>
+          <div class="endpoints">
+            <h2>Available Test Endpoints:</h2>
+            <ul>
+              <li><strong>Health Check:</strong> <a href="/api/health">/api/health</a></li>
+              <li><strong>API Base:</strong> /api/...</li>
+            </ul>
+          </div>
+        </div>
+      </body>
+    </html>
+  `);
 });
 
 // Basic health check route with more details
-app.get("/api/health", (req, res) => {
+app.get(["/health", "/api/health"], (req, res) => {
   res.json({ 
     status: "healthy",
     service: "ATL Backend API",
