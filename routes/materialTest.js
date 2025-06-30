@@ -2,8 +2,28 @@ import express from "express";
 import { MaterialTest } from "../models/MaterialTest.js";
 import { sendReportEmail } from "../utils/emailService.js";
 import puppeteer from "puppeteer";
+import puppeteerCore from "puppeteer-core";
+import chromium from "@sparticuz/chromium-min";
 
 const router = express.Router();
+
+// Helper function to initialize puppeteer browser based on environment
+async function initializeBrowser() {
+  if (process.env.VERCEL_ENV === 'production') {
+    const executablePath = await chromium.executablePath('https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar');
+    return puppeteerCore.launch({
+      executablePath,
+      args: chromium.args,
+      headless: chromium.headless,
+      defaultViewport: chromium.defaultViewport
+    });
+  } else {
+    return puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+  }
+}
 
 router.post("/create", async (req, res) => {
   try {
@@ -827,10 +847,7 @@ router.post("/:id/send-report-mail", async (req, res) => {
     }
 
     // Generate PDF from HTML using puppeteer with simplified settings
-    const browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+    const browser = await initializeBrowser();
     
     const page = await browser.newPage();
     
