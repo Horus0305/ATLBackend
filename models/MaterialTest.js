@@ -73,6 +73,7 @@ const testDetailSchema = new mongoose.Schema(
     testType: { type: String, required: true },
     tests: [individualTestSchema],
     reporturl: { type: String },
+    pdfUrl: { type: String },
     equipmenttable: { type: String, trim: true },
     resulttable: { type: String, trim: true },
     testResultStatus: {

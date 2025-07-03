@@ -14,6 +14,13 @@ import equipmentRoutes from "./routes/equipmentRoutes.js";
 import materialTestRoutes from "./routes/materialTest.js";
 import rorRoutes from "./routes/ror.js";
 import proformaRoutes from './routes/proforma.js';
+import reportRoutes from './routes/reportRoutes.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Validate environment variables
 validateEnv();
@@ -69,6 +76,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Static file serving for reports
+app.use('/uploads/reports', express.static(path.join(__dirname, 'uploads', 'reports')));
+
 // Mount routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
@@ -79,6 +89,7 @@ app.use("/api/equipment", equipmentRoutes);
 app.use("/api/material-test", materialTestRoutes);
 app.use("/api/ror", rorRoutes);
 app.use('/api/proforma', proformaRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Basic home route
 app.get("/", (req, res) => {

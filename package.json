@@ -18,12 +18,14 @@
     "crypto": "^1.0.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "fs-extra": "^11.3.0",
     "handlebars": "^4.7.8",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^7.8.6",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.10.0",
     "puppeteer": "^23.10.4",
-    "puppeteer-core": "^23.11.1"
+    "puppeteer-core": "^23.11.1",
+    "qrcode": "^1.5.4"
   }
 }

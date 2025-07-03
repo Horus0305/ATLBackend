@@ -4,6 +4,9 @@ import { sendReportEmail } from "../utils/emailService.js";
 import puppeteer from "puppeteer";
 import puppeteerCore from "puppeteer-core";
 import chromium from "@sparticuz/chromium-min";
+import { generateQRCode } from "../utils/qrCodeGenerator.js";
+import { extractYearMonthFromAtlId, saveReportPDF, getReportPublicUrl } from "../utils/fileSystem.js";
+import path from "path";
 
 const router = express.Router();
 
@@ -1103,12 +1106,14 @@ router.post("/:id/report/send-individual", async (req, res) => {
 // Approve individual report
 router.post("/:id/report/approve-individual", async (req, res) => {
   try {
+    console.log("Starting report approval process...");
     const test = await MaterialTest.findById(req.params.id);
     if (!test) {
       return res.status(404).json({ error: "Test not found" });
     }
 
     const { atlId, testType, material } = req.body;
+    console.log("Request parameters:", { atlId, testType, material });
 
     // Find the specific test
     const testIndex = test.tests.findIndex(
@@ -1120,6 +1125,122 @@ router.post("/:id/report/approve-individual", async (req, res) => {
       return res.status(404).json({ error: "Specific test not found" });
     }
 
+    // Get the current report HTML content
+    const reportHtml = test.tests[testIndex].reporturl;
+    if (!reportHtml) {
+      return res.status(400).json({ error: "No report found to approve" });
+    }
+
+    console.log("Found report HTML, extracting year and month from ATL ID...");
+    // Extract year and month from ATL ID
+    const { year, month } = extractYearMonthFromAtlId(atlId);
+    console.log("Extracted year and month:", { year, month });
+    
+    console.log("Initializing browser for PDF generation...");
+    // Generate PDF from HTML content
+    const browser = await initializeBrowser();
+    const page = await browser.newPage();
+    
+    // Set content with proper styling
+    console.log("Setting page content...");
+    await page.setContent(reportHtml, { waitUntil: 'networkidle0' });
+    
+    // Add print styles
+    console.log("Adding print styles...");
+    await page.addStyleTag({
+      content: `
+        @page { size: A4; margin: 0; }
+        body { margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .report-container { width: 595px; height: 842px; margin: 0; padding: 0; box-shadow: none; background-color: white !important; overflow: hidden; }
+        .report-page, .report-content { width: 575px; height: 820px; margin: auto; background-color: white !important; }
+        .header-section, .product-section, .table-section, .notes-section, .signatures-section { background-color: #f4efef !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; break-inside: avoid; }
+        img { display: block !important; break-inside: avoid; page-break-inside: avoid; }
+        table { break-inside: avoid; page-break-inside: avoid; }
+        .equipment-table, .results-table { border-collapse: collapse !important; }
+        .table-row { border: none !important; }
+        .table-row:first-child .table-cell { border: 0.2px solid rgb(4, 4, 4) !important; }
+        .table-cell { background-color: rgba(255, 255, 255, 0.002) !important; border: 0.2px solid rgb(4, 4, 4) !important; }
+        .table-cell:first-child { border: 0.2px solid rgb(4, 4, 4) !important; }
+        .header-cell { background-color: rgba(31, 31, 31, 0.1) !important; font-weight: 500; }
+        .table { border: none !important; }
+        .report-content { position: relative; page-break-after: always; }
+        @page { margin-bottom: 40px; }
+        .report-container { page-break-after: always; }
+        .edit-button, .download-button, .nabl-checkbox-container { display: none !important; }
+      `
+    });
+    
+    // Generate PDF buffer
+    console.log("Generating PDF...");
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 }
+    });
+    
+    await browser.close();
+    console.log("Browser closed, PDF generated successfully");
+    
+    // Create filename based on ATL ID
+    const fileName = `${atlId.replace(/\//g, '_')}_${testType.replace(/\s+/g, '_')}.pdf`;
+    console.log("Generated filename:", fileName);
+    
+    // Save PDF to appropriate directory
+    console.log("Saving PDF to directory...");
+    const filePath = await saveReportPDF(pdfBuffer, year, month, fileName);
+    console.log("PDF saved to:", filePath);
+    
+    // Generate public URL for accessing the PDF
+    const pdfUrl = getReportPublicUrl(year, month, fileName);
+    console.log("Generated public URL:", pdfUrl);
+    
+    // Generate QR code for the PDF URL
+    console.log("Generating QR code...");
+    const qrCodeDataUrl = await generateQRCode(pdfUrl);
+    console.log("QR code generated successfully");
+    
+    // Update the report HTML to include the QR code
+    let updatedReportHtml = reportHtml;
+    
+    // Replace the empty QR code div with the generated QR code
+    console.log("Replacing QR code placeholder in HTML...");
+    updatedReportHtml = updatedReportHtml.replace(
+      /<div\s+class="report-qr"\s+id="dynamic-qr-code"\s+style="width:\s*75px;\s*height:\s*75px;">\s*<!--\s*QR\s*CODE\s*PLACEHOLDER\s*-->\s*<\/div>/g,
+      `<img src="${qrCodeDataUrl}" class="report-qr" id="dynamic-qr-code" style="width: 75px; height: 75px;" alt="Report QR" />`
+    );
+    
+    // If the first replacement didn't work, try with different attribute order
+    if (updatedReportHtml === reportHtml) {
+      console.log("First replacement attempt failed, trying alternative pattern...");
+      updatedReportHtml = updatedReportHtml.replace(
+        /<div\s+id="dynamic-qr-code"\s+class="report-qr"\s+style="width:\s*75px;\s*height:\s*75px;">\s*<!--\s*QR\s*CODE\s*PLACEHOLDER\s*-->\s*<\/div>/g,
+        `<img src="${qrCodeDataUrl}" class="report-qr" id="dynamic-qr-code" style="width: 75px; height: 75px;" alt="Report QR" />`
+      );
+    }
+    
+    // If still no match, try a more flexible approach
+    if (updatedReportHtml === reportHtml) {
+      console.log("Second replacement attempt failed, trying flexible pattern...");
+      updatedReportHtml = updatedReportHtml.replace(
+        /<div[^>]*id="dynamic-qr-code"[^>]*>.*?QR\s*CODE\s*PLACEHOLDER.*?<\/div>/g,
+        `<img src="${qrCodeDataUrl}" class="report-qr" id="dynamic-qr-code" style="width: 75px; height: 75px;" alt="Report QR" />`
+      );
+    }
+    
+    console.log("QR code replacement successful:", updatedReportHtml !== reportHtml);
+    
+    if (updatedReportHtml === reportHtml) {
+      console.log("Warning: QR code replacement failed. HTML content might not contain the expected placeholder.");
+      console.log("Looking for placeholder in HTML:", reportHtml.includes('dynamic-qr-code'));
+    }
+    
+    // Update the report URL in the database with the QR code included
+    console.log("Updating report HTML in database...");
+    test.tests[testIndex].reporturl = updatedReportHtml;
+    
+    // Store the PDF URL in the database
+    test.tests[testIndex].pdfUrl = pdfUrl;
+    
     // Update individual report approval status
     test.tests[testIndex].testReportApproval = 2; // Set to "Approved"
 
@@ -1132,11 +1253,22 @@ router.post("/:id/report/approve-individual", async (req, res) => {
     }
 
     test.markModified("tests");
+    console.log("Saving changes to database...");
     await test.save();
+    console.log("Changes saved successfully");
 
-    res.json({ ok: true, test });
+    res.json({ 
+      ok: true, 
+      test,
+      pdfUrl,
+      message: "Report approved and PDF generated successfully" 
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Error approving report:", error);
+    res.status(500).json({ 
+      error: error.message || "Failed to approve report",
+      ok: false
+    });
   }
 });
 
