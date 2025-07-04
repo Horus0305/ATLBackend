@@ -64,7 +64,7 @@ router.post("/generate/:id", async (req, res) => {
     const testIdParts = test.testId.split("/");
     const [_, year, month, countPart] = testIdParts;
     const count = countPart.replace("T_", "");
-    const rorNo = `ROR/${year}/${month}/${count}`;
+    const rorNo = formData.rorNo || `ROR/${year}/${month}/${count}`;
 
     console.log("Reading template file...");
     const templatePath = path.join(__dirname, "../templates/ror.html");

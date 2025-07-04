@@ -40,6 +40,14 @@ if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
 // Log Novu key for debugging
 console.log('NOVU_SECRET_KEY in server.js:', process.env.NOVU_SECRET_KEY ? 'Key exists' : 'Key missing');
 
+// Set default frontend URL if not provided
+if (!process.env.FRONTEND_URL) {
+  process.env.FRONTEND_URL = 'https://atl-frontend-ashy.vercel.app';
+  console.log('FRONTEND_URL not found in environment, using default:', process.env.FRONTEND_URL);
+} else {
+  console.log('Using FRONTEND_URL from environment:', process.env.FRONTEND_URL);
+}
+
 const PORT = process.env.PORT || 5000;
 
 const app = express();

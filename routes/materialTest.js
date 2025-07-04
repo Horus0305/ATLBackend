@@ -7,6 +7,7 @@ import chromium from "@sparticuz/chromium-min";
 import { generateQRCode } from "../utils/qrCodeGenerator.js";
 import { extractYearMonthFromAtlId, saveReportPDF, getReportPublicUrl } from "../utils/fileSystem.js";
 import path from "path";
+import mongoose from "mongoose";
 
 const router = express.Router();
 
@@ -1131,72 +1132,28 @@ router.post("/:id/report/approve-individual", async (req, res) => {
       return res.status(400).json({ error: "No report found to approve" });
     }
 
-    console.log("Found report HTML, extracting year and month from ATL ID...");
-    // Extract year and month from ATL ID
-    const { year, month } = extractYearMonthFromAtlId(atlId);
-    console.log("Extracted year and month:", { year, month });
+    console.log("Found report HTML, processing...");
     
-    console.log("Initializing browser for PDF generation...");
-    // Generate PDF from HTML content
-    const browser = await initializeBrowser();
-    const page = await browser.newPage();
+    // Use the atlId as the parameter for the report viewer URL
+    const reportId = test.tests[testIndex].atlId;
     
-    // Set content with proper styling
-    console.log("Setting page content...");
-    await page.setContent(reportHtml, { waitUntil: 'networkidle0' });
+    // Get base URL from request
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
     
-    // Add print styles
-    console.log("Adding print styles...");
-    await page.addStyleTag({
-      content: `
-        @page { size: A4; margin: 0; }
-        body { margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        .report-container { width: 595px; height: 842px; margin: 0; padding: 0; box-shadow: none; background-color: white !important; overflow: hidden; }
-        .report-page, .report-content { width: 575px; height: 820px; margin: auto; background-color: white !important; }
-        .header-section, .product-section, .table-section, .notes-section, .signatures-section { background-color: #f4efef !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; break-inside: avoid; }
-        img { display: block !important; break-inside: avoid; page-break-inside: avoid; }
-        table { break-inside: avoid; page-break-inside: avoid; }
-        .equipment-table, .results-table { border-collapse: collapse !important; }
-        .table-row { border: none !important; }
-        .table-row:first-child .table-cell { border: 0.2px solid rgb(4, 4, 4) !important; }
-        .table-cell { background-color: rgba(255, 255, 255, 0.002) !important; border: 0.2px solid rgb(4, 4, 4) !important; }
-        .table-cell:first-child { border: 0.2px solid rgb(4, 4, 4) !important; }
-        .header-cell { background-color: rgba(31, 31, 31, 0.1) !important; font-weight: 500; }
-        .table { border: none !important; }
-        .report-content { position: relative; page-break-after: always; }
-        @page { margin-bottom: 40px; }
-        .report-container { page-break-after: always; }
-        .edit-button, .download-button, .nabl-checkbox-container { display: none !important; }
-      `
-    });
+    // Use environment variable if available, otherwise construct from request
+    const frontendUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
     
-    // Generate PDF buffer
-    console.log("Generating PDF...");
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 }
-    });
+    console.log("Using frontend URL:", frontendUrl);
+    console.log("Using report ID (atlId):", reportId);
     
-    await browser.close();
-    console.log("Browser closed, PDF generated successfully");
+    // Generate the report viewer URL
+    const reportViewerUrl = `${frontendUrl}/report/${encodeURIComponent(reportId)}`;
+    console.log("Generated report viewer URL:", reportViewerUrl);
     
-    // Create filename based on ATL ID
-    const fileName = `${atlId.replace(/\//g, '_')}_${testType.replace(/\s+/g, '_')}.pdf`;
-    console.log("Generated filename:", fileName);
-    
-    // Save PDF to appropriate directory
-    console.log("Saving PDF to directory...");
-    const filePath = await saveReportPDF(pdfBuffer, year, month, fileName);
-    console.log("PDF saved to:", filePath);
-    
-    // Generate public URL for accessing the PDF
-    const pdfUrl = getReportPublicUrl(year, month, fileName);
-    console.log("Generated public URL:", pdfUrl);
-    
-    // Generate QR code for the PDF URL
+    // Generate QR code for the report viewer URL
     console.log("Generating QR code...");
-    const qrCodeDataUrl = await generateQRCode(pdfUrl);
+    const qrCodeDataUrl = await generateQRCode(reportViewerUrl);
     console.log("QR code generated successfully");
     
     // Update the report HTML to include the QR code
@@ -1204,42 +1161,54 @@ router.post("/:id/report/approve-individual", async (req, res) => {
     
     // Replace the empty QR code div with the generated QR code
     console.log("Replacing QR code placeholder in HTML...");
-    updatedReportHtml = updatedReportHtml.replace(
+    
+    // Try multiple patterns for the QR code placeholder
+    const qrCodePlaceholderPatterns = [
       /<div\s+class="report-qr"\s+id="dynamic-qr-code"\s+style="width:\s*75px;\s*height:\s*75px;">\s*<!--\s*QR\s*CODE\s*PLACEHOLDER\s*-->\s*<\/div>/g,
-      `<img src="${qrCodeDataUrl}" class="report-qr" id="dynamic-qr-code" style="width: 75px; height: 75px;" alt="Report QR" />`
-    );
+      /<div\s+id="dynamic-qr-code"\s+class="report-qr"\s+style="width:\s*75px;\s*height:\s*75px;">\s*<!--\s*QR\s*CODE\s*PLACEHOLDER\s*-->\s*<\/div>/g,
+      /<div[^>]*id="dynamic-qr-code"[^>]*>.*?QR\s*CODE\s*PLACEHOLDER.*?<\/div>/g,
+      /<div[^>]*id="dynamic-qr-code"[^>]*>.*?<\/div>/g,
+      /<div[^>]*class="report-qr"[^>]*>.*?<\/div>/g,
+      /<div[^>]*class="nabl-stamp"[^>]*>.*?<div[^>]*class="report-qr"[^>]*>.*?<\/div>/g
+    ];
     
-    // If the first replacement didn't work, try with different attribute order
-    if (updatedReportHtml === reportHtml) {
-      console.log("First replacement attempt failed, trying alternative pattern...");
-      updatedReportHtml = updatedReportHtml.replace(
-        /<div\s+id="dynamic-qr-code"\s+class="report-qr"\s+style="width:\s*75px;\s*height:\s*75px;">\s*<!--\s*QR\s*CODE\s*PLACEHOLDER\s*-->\s*<\/div>/g,
+    // Try each pattern until one works
+    let replacementSuccessful = false;
+    for (const pattern of qrCodePlaceholderPatterns) {
+      const tempHtml = updatedReportHtml.replace(
+        pattern,
         `<img src="${qrCodeDataUrl}" class="report-qr" id="dynamic-qr-code" style="width: 75px; height: 75px;" alt="Report QR" />`
       );
+      
+      if (tempHtml !== updatedReportHtml) {
+        updatedReportHtml = tempHtml;
+        replacementSuccessful = true;
+        console.log("QR code replacement successful with pattern:", pattern);
+        break;
+      }
     }
     
-    // If still no match, try a more flexible approach
-    if (updatedReportHtml === reportHtml) {
-      console.log("Second replacement attempt failed, trying flexible pattern...");
-      updatedReportHtml = updatedReportHtml.replace(
-        /<div[^>]*id="dynamic-qr-code"[^>]*>.*?QR\s*CODE\s*PLACEHOLDER.*?<\/div>/g,
-        `<img src="${qrCodeDataUrl}" class="report-qr" id="dynamic-qr-code" style="width: 75px; height: 75px;" alt="Report QR" />`
-      );
-    }
-    
-    console.log("QR code replacement successful:", updatedReportHtml !== reportHtml);
-    
-    if (updatedReportHtml === reportHtml) {
+    // If no pattern worked, add a comment to help debugging
+    if (!replacementSuccessful) {
       console.log("Warning: QR code replacement failed. HTML content might not contain the expected placeholder.");
       console.log("Looking for placeholder in HTML:", reportHtml.includes('dynamic-qr-code'));
+      
+      // As a fallback, try to find a suitable location to insert the QR code
+      if (updatedReportHtml.includes('signatures-section')) {
+        updatedReportHtml = updatedReportHtml.replace(
+          /<div class="signatures-section">/g,
+          `<div class="signatures-section"><img src="${qrCodeDataUrl}" class="report-qr" id="dynamic-qr-code" style="width: 75px; height: 75px; position: absolute; right: 20px; top: 20px;" alt="Report QR" />`
+        );
+        console.log("Inserted QR code in signatures-section as fallback");
+      }
     }
     
     // Update the report URL in the database with the QR code included
     console.log("Updating report HTML in database...");
     test.tests[testIndex].reporturl = updatedReportHtml;
     
-    // Store the PDF URL in the database
-    test.tests[testIndex].pdfUrl = pdfUrl;
+    // Store the report viewer URL in the database
+    test.tests[testIndex].pdfUrl = reportViewerUrl;
     
     // Update individual report approval status
     test.tests[testIndex].testReportApproval = 2; // Set to "Approved"
@@ -1260,8 +1229,8 @@ router.post("/:id/report/approve-individual", async (req, res) => {
     res.json({ 
       ok: true, 
       test,
-      pdfUrl,
-      message: "Report approved and PDF generated successfully" 
+      pdfUrl: reportViewerUrl,
+      message: "Report approved successfully" 
     });
   } catch (error) {
     console.error("Error approving report:", error);
@@ -1394,6 +1363,107 @@ router.get("/:id/report-data", async (req, res) => {
     res.status(500).json({
       error: "Failed to fetch report data",
       ok: false
+    });
+  }
+});
+
+// Get report by ID
+router.get("/report/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Validate the ID format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid report ID format"
+      });
+    }
+    
+    // Find the test containing the report
+    const test = await MaterialTest.findOne({
+      "tests._id": id
+    });
+    
+    if (!test) {
+      return res.status(404).json({
+        ok: false,
+        error: "Report not found"
+      });
+    }
+    
+    // Find the specific test report
+    const report = test.tests.find(t => t._id.toString() === id);
+    
+    if (!report) {
+      return res.status(404).json({
+        ok: false,
+        error: "Report not found"
+      });
+    }
+    
+    return res.json({
+      ok: true,
+      report
+    });
+  } catch (error) {
+    console.error("Error fetching report by ID:", error);
+    return res.status(500).json({
+      ok: false,
+      error: "Failed to fetch report"
+    });
+  }
+});
+
+// Get report by atlId
+router.get("/report-by-atlid/:atlId", async (req, res) => {
+  try {
+    const { atlId } = req.params;
+    
+    if (!atlId) {
+      return res.status(400).json({
+        ok: false,
+        error: "ATL ID is required"
+      });
+    }
+    
+    console.log("Searching for report with atlId:", atlId);
+    
+    // Find the test containing the report with the given atlId
+    const test = await MaterialTest.findOne({
+      "tests.atlId": atlId
+    });
+    
+    if (!test) {
+      console.log("No test found with atlId:", atlId);
+      return res.status(404).json({
+        ok: false,
+        error: "Report not found"
+      });
+    }
+    
+    // Find the specific test report
+    const report = test.tests.find(t => t.atlId === atlId);
+    
+    if (!report) {
+      console.log("No report found in test with atlId:", atlId);
+      return res.status(404).json({
+        ok: false,
+        error: "Report not found"
+      });
+    }
+    
+    console.log("Found report:", report.atlId);
+    
+    return res.json({
+      ok: true,
+      report
+    });
+  } catch (error) {
+    console.error("Error fetching report by atlId:", error);
+    return res.status(500).json({
+      ok: false,
+      error: "Failed to fetch report"
     });
   }
 });

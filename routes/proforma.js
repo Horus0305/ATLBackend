@@ -64,7 +64,7 @@ router.post('/create', async (req, res) => {
     const count = countPart.replace('T_', ''); // Remove 'T_' prefix from count
 
     // Generate proforma invoice number
-    const invoiceNo = `ATL/${year}/${month}/${count}`;
+    const invoiceNo = req.body.proformaNo || `ATL/${year}/${month}/${count}`;
 
     // Validate required fields
     if (!materials || !Array.isArray(materials)) {
