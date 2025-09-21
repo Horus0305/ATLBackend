@@ -1,6 +1,7 @@
 import express from "express";
 import { verifyToken } from "../middleware/auth.js";
 import { MaterialTest } from "../models/MaterialTest.js";
+import { Equipment } from "../models/Equipment.js";
 
 const router = express.Router();
 
@@ -104,6 +105,99 @@ router.get("/monthly-stats", verifyToken, async (req, res) => {
 // Placeholder for section head routes
 router.get("/", verifyToken, (req, res) => {
   res.json({ message: "Section Head routes working" });
+});
+
+// Equipment management routes for section heads
+
+// Get all equipment
+router.get("/equipments", verifyToken, async (req, res) => {
+  try {
+    const equipment = await Equipment.find();
+    res.json({ 
+      ok: true,
+      equipment: equipment.map(item => ({
+        _id: item._id,
+        equipment: item.equipment_name,
+        range: item.range,
+        cno: item.certificate_no,
+        cdate: item.caliberation_date,
+        ddate: item.due_date,
+        cname: item.caliberated_by
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      ok: false,
+      error: 'Failed to fetch equipment' 
+    });
+  }
+});
+
+// Create new equipment
+router.post("/equipments", verifyToken, async (req, res) => {
+  try {
+    const equipment = new Equipment({
+      equipment_name: req.body.equipment,
+      range: req.body.range,
+      certificate_no: req.body.cno,
+      caliberation_date: req.body.cdate,
+      due_date: req.body.ddate,
+      caliberated_by: req.body.cname
+    });
+    await equipment.save();
+    res.json({ ok: true, equipment });
+  } catch (error) {
+    res.status(500).json({ 
+      ok: false,
+      error: 'Failed to create equipment' 
+    });
+  }
+});
+
+// Update equipment
+router.put("/equipments/:id", verifyToken, async (req, res) => {
+  try {
+    const equipment = await Equipment.findByIdAndUpdate(
+      req.params.id,
+      {
+        equipment_name: req.body.equipment,
+        range: req.body.range,
+        certificate_no: req.body.cno,
+        caliberation_date: req.body.cdate,
+        due_date: req.body.ddate,
+        caliberated_by: req.body.cname
+      },
+      { new: true }
+    );
+    res.json({ ok: true, equipment });
+  } catch (error) {
+    res.status(500).json({ 
+      ok: false,
+      error: 'Failed to update equipment' 
+    });
+  }
+});
+
+// Delete equipment
+router.delete("/equipments/:id", verifyToken, async (req, res) => {
+  try {
+    const equipment = await Equipment.findByIdAndDelete(req.params.id);
+    if (!equipment) {
+      return res.status(404).json({ 
+        error: 'Equipment not found',
+        ok: false 
+      });
+    }
+    res.json({ 
+      message: 'Equipment deleted successfully',
+      ok: true 
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      ok: false,
+      error: 'Failed to delete equipment' 
+    });
+  }
 });
 
 export default router;
