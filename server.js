@@ -15,6 +15,7 @@ import materialTestRoutes from "./routes/materialTest.js";
 import rorRoutes from "./routes/ror.js";
 import proformaRoutes from './routes/proforma.js';
 import reportRoutes from './routes/reportRoutes.js';
+import testScopeRoutes from './routes/testScopeRoutes.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -98,6 +99,7 @@ app.use("/api/material-test", materialTestRoutes);
 app.use("/api/ror", rorRoutes);
 app.use('/api/proforma', proformaRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/test-scope', testScopeRoutes);
 
 // Basic home route
 app.get("/", (req, res) => {

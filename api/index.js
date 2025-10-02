@@ -14,6 +14,7 @@ import equipmentRoutes from "../routes/equipmentRoutes.js";
 import materialTestRoutes from "../routes/materialTest.js";
 import rorRoutes from "../routes/ror.js";
 import proformaRoutes from '../routes/proforma.js';
+import testScopeRoutes from '../routes/testScopeRoutes.js';
 
 // Validate environment variables
 validateEnv();
@@ -169,6 +170,7 @@ app.use("/api/equipment", equipmentRoutes);
 app.use("/api/material-test", materialTestRoutes);
 app.use("/api/ror", rorRoutes);
 app.use('/api/proforma', proformaRoutes);
+app.use('/api/test-scope', testScopeRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
